@@ -1,3 +1,18 @@
+<#
+.SYNOPSIS
+    Adds IIS Virtual Accounts to the StoreFrontServers local security group
+  
+.DESCRIPTION
+    Adds IIS Virtual Accounts to the StoreFrontServers local security group.  
+    This is necessary to grant StoreFront server App Pools and Services the ability to read/write to the SQL subscription database.
+
+.EXAMPLE
+
+.NOTES
+    Author: Mark Dear
+    Date: 06 Nov, 2019
+#>
+
 # Create Local Group for StoreFront servers on DB Server
 $LocalGroupName = "StoreFrontServers"
 $Description = "Contains StoreFront Server Machine Accounts or StoreFront AppPool Virtual Accounts"
