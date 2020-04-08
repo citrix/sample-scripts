@@ -1,4 +1,3 @@
-
 $trustBaseUrl = "https://trust.citrixworkspacesapi.net"
 
 $nlsBaseUrl = "https://sdwan-location.citrixnetworkapi.net"
@@ -21,7 +20,6 @@ function Connect-NLS {
     $script:bearer = GetBearerToken -clientId $clientId -clientSecret $clientSecret
     $script:customer = $customer
     Write-Host "If you haven't received an error message, you are now successfully authenticated with the Network Location Service."
-    Write-Host "Note: This feature is currently in Technical Preview. Citrix recommends using technical preview features only in test environments."
 }
 
 function Get-NLSHealth {
@@ -36,7 +34,7 @@ function Get-NLSBandwidthTiers {
     [CmdletBinding()]
     param (
     )
-    
+
     $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
     $resp = Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/bandwidthTiers" -Method GET -Headers $headers
     return $resp.bandwidthTiers
@@ -50,8 +48,6 @@ function New-NLSSite {
         [Parameter(Mandatory=$true)]
         [string[]] $tags,
         [Parameter(Mandatory=$true)]
-        [string] $timezone,
-        [Parameter(Mandatory=$true)]
         [string[]] $ipv4Ranges,
         [Parameter(Mandatory=$false)]
         [string[]] $ipv6Ranges,
@@ -64,12 +60,6 @@ function New-NLSSite {
     $body = @{
         "name" = $name;
         "tags" = $tags;
-        "timeZone" = @{
-            "code" = "Eastern Daylight Time";
-            "gmtOffset" = -4;
-            "isDaylightSaving" = $true;
-            "name" = "America/New_York"
-        };
         "ipv4Ranges" = $ipv4Ranges;
         "ipv6Ranges" = $ipv6Ranges;
         "bandwidthTierId" = GetTier1;
@@ -90,7 +80,7 @@ function Get-NLSSite {
     [CmdletBinding()]
     param (
     )
-
+    
     $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
     $resp = Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites" -Method GET -Headers $headers
     foreach ($site in $resp.sites) { 
@@ -108,8 +98,6 @@ function Set-NLSSite {
         [Parameter(ValueFromPipelineByPropertyName)]
         [string[]] $tags,
         [Parameter(ValueFromPipelineByPropertyName)]
-        [string] $timezone,
-        [Parameter(ValueFromPipelineByPropertyName)]
         [string[]] $ipv4Ranges,
         [Parameter(ValueFromPipelineByPropertyName)]
         [string[]] $ipv6Ranges,
@@ -121,12 +109,6 @@ function Set-NLSSite {
         $body = @{
             "name" = $name;
             "tags" = $tags;
-            "timeZone" = @{
-                "code" = "Eastern Daylight Time";
-                "gmtOffset" = -4;
-                "isDaylightSaving" = $true;
-                "name" = "America/New_York"
-            };
             "ipv4Ranges" = $ipv4Ranges;
             "ipv6Ranges" = $ipv6Ranges;
             "bandwidthTierId" = GetTier1;
@@ -185,7 +167,6 @@ function GetTier1() {
 
     return $script:tier1
 }
-
 
 Export-ModuleMember -Function 'Connect-*'
 Export-ModuleMember -Function 'Get-*'
