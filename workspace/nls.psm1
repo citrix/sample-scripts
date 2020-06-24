@@ -1,25 +1,55 @@
-$trustBaseUrl = "https://trust.citrixworkspacesapi.net"
-
-$nlsBaseUrl = "https://sdwan-location.citrixnetworkapi.net"
-
-$bearer = ""
-$customer = ""
-$tier1 = ""
+$script:trustBaseUrl = "https://trust.citrixworkspacesapi.net"
+$script:nlsBaseUrl = "https://sdwan-location.citrixnetworkapi.net"
 
 function Connect-NLS {
+    <#
+        .SYNOPSIS
+        Performs the initial authentication handshake to Citrix Cloud. This function must be run prior
+        to performing any other actions in this module
+
+        .LINK
+        https://docs.citrix.com/en-us/citrix-workspace/workspace-network-location.html#create-a-secure-client
+
+        .EXAMPLE
+        $clientId = "XXXX"      #Replace with your clientId
+        $clientSecret = "YYY"   #Replace with your clientSecret
+        $customer = "CCCCCC"    #Replace with your customerid
+
+        # Connect to Network Location Service
+        Connect-NLS -clientId $clientId -clientSecret $clientSecret -customer $customer
+
+        .EXAMPLE
+        # Takes credential information via parameter Read-Host
+        Connect-NLS
+
+        .NOTES
+        The variables required for this function can be found by visiting Citrix Cloud (https://citrix.cloud.com),
+        opening the menu at the top left, selecting "Identity and Access Management", followed by opening
+        the "API Access" tab
+    #>
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $clientId,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $clientSecret,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $customer
     )
 
-    $script:bearer = GetBearerToken -clientId $clientId -clientSecret $clientSecret
-    $script:customer = $customer
-    Write-Host "If you haven't received an error message, you are now successfully authenticated with the Network Location Service."
+    try {
+        GetBearerToken -clientId $clientId -clientSecret $clientSecret -ErrorAction Stop
+    }
+    catch {
+        Write-Error -Exception $_.Exception -Message "Failed to connect to Citrix Cloud: $($_.ErrorDetails)"
+        break
+    }
+
+    # When copied directly from Citrix Cloud, there's a potential for a zero-width space to be tacked
+    # onto the front. The second trim removes that character.
+    $script:customer = $customer.Trim().Trim([char]8203)
+    Write-Host -ForegroundColor Green "Successfully authenticated to Citrix Cloud!"
+    Write-Host "You may now begin Network Location Sites configuration by using ``New-NLSSite``"
 }
 
 function Get-NLSHealth {
@@ -27,7 +57,7 @@ function Get-NLSHealth {
     param (
     )
 
-    return Invoke-RestMethod -Uri "${nlsBaseUrl}/root/location/v1/health" -Method GET
+    return Invoke-RestMethod -Uri "${script:nlsBaseUrl}/root/location/v1/health" -Method GET
 }
 
 function Get-NLSBandwidthTiers {
@@ -35,61 +65,112 @@ function Get-NLSBandwidthTiers {
     param (
     )
 
-    $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
-    $resp = Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/bandwidthTiers" -Method GET -Headers $headers
-    return $resp.bandwidthTiers
+    $response = Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/bandwidthTiers"
+    return $response.bandwidthTiers
 }
 
 function New-NLSSite {
+    <#
+        .SYNOPSIS
+        Creates a new physical site location in Citrix Cloud for Network Location Services
+
+        .PARAMETER name
+        Site Nickname
+
+        .PARAMETER tags
+        List of tags to associate with the site
+
+        .PARAMETER ipv4Ranges
+        CIDR IPv4 address list associated with the site
+
+        .PARAMETER ipv6Ranges
+        CIDR IPv6 address list associated with the site
+
+        .PARAMETER latitude
+        Geographical latitude of the site
+
+        .PARAMETER longitude
+        Geographical longitude of the site
+
+        .EXAMPLE
+        New-NLSSite -name "New York" -tags @("EastCoast") -ipv4Ranges @("999.999.999.999/24") -longitude 40.7128 -latitude -74.0060
+    #>
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $name,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string[]] $tags,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string[]] $ipv4Ranges,
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string[]] $ipv6Ranges,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $latitude,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string] $longitude
     )
 
     $body = @{
-        "name" = $name;
-        "tags" = $tags;
-        "ipv4Ranges" = $ipv4Ranges;
-        "ipv6Ranges" = $ipv6Ranges;
+        "name"            = $name;
+        "tags"            = $tags;
+        "ipv4Ranges"      = $ipv4Ranges;
+        "ipv6Ranges"      = $ipv6Ranges;
         "bandwidthTierId" = GetTier1;
-        "geoLocation" = @{
-          "latitude" = $latitude;
-          "longitude" = $longitude;
+        "geoLocation"     = @{
+            "latitude"  = $latitude;
+            "longitude" = $longitude;
         };
-      }
+    }
 
-    $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
-    $resp = Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites" -Method POST -Body (ConvertTo-Json $body) -Headers $headers
-    $siteId = $resp.siteId
+    $response = Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites" -Method POST -Body (ConvertTo-Json $body)
+    $siteId = $response.siteId
 
-    return (Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites/${siteId}" -Method GET -Headers $headers).site
+    return (Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites/${siteId}").site
 }
 
 function Get-NLSSite {
+    <#
+        .SYNOPSIS
+        Retrieves a list of all sites associated with the current Citrix Cloud Customer
+
+        .EXAMPLE
+        Get-NLSSite
+
+        .EXAMPLE
+        Get-NLSSite | Out-GridView
+    #>
     [CmdletBinding()]
     param (
     )
-    
-    $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
-    $resp = Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites" -Method GET -Headers $headers
-    foreach ($site in $resp.sites) { 
-        Write-Output $site
-    }
+
+    $(Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites").sites
 }
 
 function Set-NLSSite {
-    [CmdletBinding()]
+    <#
+        .SYNOPSIS
+        Updates an existing site with new information
+
+        .PARAMETER name
+        Site Nickname
+
+        .PARAMETER tags
+        List of tags to associate with the site
+
+        .PARAMETER ipv4Ranges
+        CIDR IPv4 address list associated with the site
+
+        .PARAMETER ipv6Ranges
+        CIDR IPv6 address list associated with the site
+
+        .PARAMETER geoLocation
+        Geographical location of the site. Note this is a PSObject, unlike `New-NLSSite`
+
+        .EXAMPLE
+        Get-NLSSite | Where-Object {$_.id -like "zzz*"} | Set-NlsSite -ipv4ranges @("127.0.0.1/32") -confirm
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter(ValueFromPipelineByPropertyName)]
         [string] $id,
@@ -107,65 +188,142 @@ function Set-NLSSite {
 
     Process {
         $body = @{
-            "name" = $name;
-            "tags" = $tags;
-            "ipv4Ranges" = $ipv4Ranges;
-            "ipv6Ranges" = $ipv6Ranges;
+            "name"            = $name;
+            "tags"            = $tags;
+            "ipv4Ranges"      = $ipv4Ranges;
+            "ipv6Ranges"      = $ipv6Ranges;
             "bandwidthTierId" = GetTier1;
-            "geoLocation" = @{
-                "latitude" = $geoLocation.latitude;
+            "geoLocation"     = @{
+                "latitude"  = $geoLocation.latitude;
                 "longitude" = $geoLocation.longitude;
             };
         }
 
-        $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
-        Write-Output (Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites" -Method POST -Body (ConvertTo-Json $body) -Headers $headers).site
+        if ($PSCmdlet.ShouldProcess("`n$(ConvertTo-Json(@{ "id" = $id; "site" = $body; }))")) {
+            $siteId = (Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites/$id" -Method PUT -Body (ConvertTo-Json $body)).siteId
+
+            return (Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites/${siteId}").site
+        }
     }
 }
 
 function Remove-NLSSite {
-    [CmdletBinding()]
+    <#
+        .SYNOPSIS
+        Removes a site from the Network Location Service
+
+        .PARAMETER id
+        Site ID as defined by `Get-NLSSite`
+
+        .EXAMPLE
+        Get-NLSSite | Where-Object {$_.ipv4ranges -contains "127.0.0.1/32"} | Remove-NLSSite -confirm
+
+        .NOTES
+        This command supports ShouldProcess arguments and requests confirmation for every invocation.
+        To escape this behavior while using scripts, specify `-confirm:$false`
+    #>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param (
         [Parameter(ValueFromPipelineByPropertyName)]
         [string] $id
     )
 
     Process {
-        $headers = @{"Authorization"="CWSAuth bearer=${script:bearer}"}
-        Invoke-RestMethod -Uri "${nlsBaseUrl}/${script:customer}/location/v1/sites/${id}" -Method DELETE -Headers $headers
+        if ($PSCmdlet.ShouldProcess($id)) {
+            Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites/${id}" -Method DELETE
+        }
     }
 }
 
+#################################################################################
+# Helper Functions
+#################################################################################
 function GetBearerToken {
-  param (
-    [Parameter(Mandatory=$true)]
-    [string] $clientId,
-    [Parameter(Mandatory=$true)]
-    [string] $clientSecret
-  )
+    param (
+        [Parameter(Mandatory = $true)]
+        [string] $clientId,
+        [Parameter(Mandatory = $true)]
+        [string] $clientSecret
+    )
 
-  $postHeaders = @{"Content-Type"="application/json"}
-  $body = @{
-    "ClientId"=$clientId;
-    "ClientSecret"=$clientSecret
-  }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-  $trustUrl = "${trustBaseUrl}/root/tokens/clients"
+    $postHeaders = @{
+        "Accept"       = "Application/Json";
+        "Content-Type" = "Application/Json";
+    }
+    $body = @{
+        "ClientId"     = $clientId;
+        "ClientSecret" = $clientSecret;
+    }
 
-  $response = Invoke-RestMethod -Uri $trustUrl -Method POST -Body (ConvertTo-Json $body) -Headers $postHeaders
+    $trustUrl = "${script:trustBaseUrl}/root/tokens/clients"
 
-  $bearerToken = $response.token
+    try {
+        $response = Invoke-RestMethod -Uri $trustUrl -Method POST -Body (ConvertTo-Json $body) -Headers $postHeaders -SessionVariable script:websession
+        $script:websession.Headers.Add("Authorization", "CWSAuth bearer=$($response.token)")
+    }
+    catch {
+        $script:websession = $null
+        throw $_
+    }
+}
 
-  return $bearerToken;
+function Invoke-AuthenticatedRestMethod {
+    <#
+        .SYNOPSIS
+        'Internal' helper method used to attach neccessary headers to the request
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [Uri] $Uri,
+        [Parameter()]
+        [Microsoft.PowerShell.Commands.WebRequestMethod] $Method = 'GET',
+        [Parameter()]
+        [String] $Body = $null
+    )
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    if ($null -eq $script:websession) {
+        Write-Warning "Script does not seem to be authenticated. Run ``Connect-NLS`` before continuing further"
+        break
+    }
+
+    try {
+        if ([string]::IsNullOrEmpty($Body)) {
+            Invoke-RestMethod -Uri $Uri -Method $Method -WebSession $script:websession -ErrorAction Stop
+            return
+        }
+
+        Invoke-RestMethod -Uri $Uri -Method $Method -Body $Body -WebSession $script:websession -ErrorAction Stop
+        return
+    }
+    catch [System.Net.WebException] {
+        # Perform some data massaging to help extract any error information at hand
+        $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($errorDetails.PsObject.Properties.Name -contains "error") {
+            $errorDetails | Add-Member -NotePropertyName Message -NotePropertyValue $errorDetails.error
+        }
+
+        if ($errorDetails.PsObject.Properties.Name -contains "detail") {
+            $errorDetails | Add-Member -NotePropertyName Message -NotePropertyValue $errorDetails.detail
+        }
+
+        throw New-Object -TypeName System.Net.WebException("Failed to perform requested action: $($errorDetails.Message) ($($errorDetails.Code))", $_.Exception)
+    }
 }
 
 # Temporary until API change
 function GetTier1() {
-    if ($script:tier1 -eq "") {
-        $script:tier1 = (Get-NLSBandwidthTiers | Where-Object name -EQ "tier1").id
+    if ([string]::IsNullOrEmpty($script:tier1)) {
+        $script:tier1 = (Get-NLSBandwidthTiers -ErrorAction Stop | Where-Object name -EQ "tier1").id
     }
 
-    return $script:tier1
+    Write-Verbose "Using Tier ID: $($script:tier1)"
+
+    $script:tier1
+    return
 }
 
 Export-ModuleMember -Function 'Connect-*'
