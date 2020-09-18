@@ -144,7 +144,17 @@ function Get-NLSSite {
     param (
     )
 
-    $(Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites").sites
+    try {
+        $(Invoke-AuthenticatedRestMethod -Uri "${script:nlsBaseUrl}/${script:customer}/location/v1/sites").sites
+    }
+    catch {
+        # NLS returns 404 if no sites have ever been configured. Catch the error and drop it.
+        if ([int]$_.Exception.InnerException.Response.StatusCode -ne 404) {
+            throw
+        }
+
+        Write-Verbose "Service returned 404 - this typically means no sites have been configured for this customer before. Run ``New-NLSSite`` and try again"
+    }
 }
 
 function Set-NLSSite {
@@ -300,6 +310,11 @@ function Invoke-AuthenticatedRestMethod {
         return
     }
     catch [System.Net.WebException] {
+        if ($null -eq $_.ErrorDetails.Message -or -not $_.ErrorDetails.Message.StartsWith("{")) {
+            # Error occurred which we cannot gather any additional detail from
+            throw
+        }
+
         # Perform some data massaging to help extract any error information at hand
         $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json
         if ($errorDetails.PsObject.Properties.Name -contains "error") {
