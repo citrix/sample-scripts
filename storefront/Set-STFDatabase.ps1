@@ -21,6 +21,7 @@
     $StoreObject = Get-STFStoreService -SiteID $SiteID -VirtualPath $VirtualPath
     Set-STFStoreSubscriptionsDatabase -StoreService $StoreObject -ConnectionString $ConnectionString
 .NOTES
+    Version 2. Added support for custom SQL ports in the connection string that is used to configure the Store.
     Author: Mark Dear
     Date: 17 Nov, 2020
 #>

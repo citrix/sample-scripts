@@ -15,7 +15,7 @@
     Version 2.  Added string buffer and removed string concatenation to make the script process rows faster.
     File write operation now only happens once at the end after all rows are processed.
     Author: Mark Dear
-    Date: 15 July, 2020
+    Date: 17 Nov, 2020
 #>
 
 function Transform-SubscriptionDataForStore
