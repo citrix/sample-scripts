@@ -1,28 +1,24 @@
 <#
 .SYNOPSIS
-    Converts TSV Subscription Data into format suitable for Bulk Insert into MS SQL
-  
+    Converts Tab Separate Variable Subscription Data into format suitable for Bulk Insert into MS SQL
 .DESCRIPTION 
     Used to perform data transformation of exported ESENT subscriptions into a suitable format for import into a SQL database.  
-
 .INPUTS
-    Accepts a single <StoreName>.txt TSV file from Storefront.
-
+    Accepts a single <StoreName>.txt Tab Separate Variable file from flat Storefront ESENT database.
 .OUTPUTS
     Creates <StoreName>SQL.txt file on the current user's desktop.
-
 .PARAMETER
-    StoreName.  This should match the name of your store in StoreFront.
-
+    StoreName.  This should match the name of your store within StoreFront.
 .EXAMPLE
     Transform-SubscriptionDataForStore -StoreName "Store"
-
 .NOTES
+    Version 2.  Added string buffer and removed string concatenation to make the script process rows faster.
+    File write operation now only happens once at the end after all rows are processed.
     Author: Mark Dear
-    Date: 06 Nov, 2019
+    Date: 15 July, 2020
 #>
 
-function Transform-SubscriptionDataForStore #Tested
+function Transform-SubscriptionDataForStore
 {
     [CmdletBinding()]
     param([Parameter(Mandatory=$false)][string]$StoreName)
@@ -38,19 +34,22 @@ function Transform-SubscriptionDataForStore #Tested
 
         # Reads in file exported from StoreFront into a Powershell object
         $TSVObject = Get-Content -path ("$env:userprofile\desktop\$StoreName.txt")
+        Write-Host "StoreFront export file contains $($TSVObject.Length) rows" -ForegroundColor "Green"
 
+        $StringBuffer = New-Object System.Text.StringBuilder
         [array]$UserSIDs = @()
 
-        foreach ($Line in $TSVObject)
+        # Starts System StopWatch to time the processing of all rows
+        Write-Host "Started at $(Get-Date)"
+        $StopWatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+        for($row=0; $row -le ($TSVObject.length - 1); $row++)
         {
             [array]$KeyValuePairsXMLStrings = @()
     
-            # Debug Code to display raw data coming in
-            # $Line | Format-Table -AutoSize
-    
             # Split the columns from the StoreFront export file using tabs as the separator
-            $LineSplit = $Line.split("`t")
-            Write-Host "Line Contains $($LineSplit.length) data items" -ForegroundColor "Green" 
+            $LineSplit = $TSVObject[$row].split("`t")
+            # Write-Host "Line Contains $($LineSplit.length) data items" -ForegroundColor "Green" 
 
             # First 4 items are in fixed positions
             $UserSID = $LineSplit[0]
@@ -60,10 +59,14 @@ function Transform-SubscriptionDataForStore #Tested
             $AppID = $LineSplit[2] 
             $Status = $LineSplit[3] 
             
-            For ($i=4; $i -lt ($LineSplit.length - 1); $i+= 2) 
+            # Process the key value pairs to convert into XML to be written to SQL
+            # key = even number
+            # value = odd number
+
+            For ($column=4; $column -lt ($LineSplit.length - 1); $column+= 2) 
             {       
-                $KeyString = $LineSplit[$i]
-                $ValueIndex = ($i + 1)
+                $KeyString = $LineSplit[$column]
+                $ValueIndex = ($column + 1)
                 $ValueString = $LineSplit[$ValueIndex]
                 $KeyValuePairXMLString = '<property key="'+$KeyString+'"><value>"'+$ValueString+'"</value></property>'
                 $KeyValuePairsXMLStrings += $KeyValuePairXMLString
@@ -73,7 +76,7 @@ function Transform-SubscriptionDataForStore #Tested
 
             if ($Status -eq "subscribed")
             {
-                $SQLAppStatus = 1   
+                $SQLAppStatus = 1
             }
             else
             {
@@ -81,26 +84,36 @@ function Transform-SubscriptionDataForStore #Tested
             }
        
             # Debugging Code
+            Write-Host "Processing row $row" -ForegroundColor "Yellow"
             Write-Host "UserSID = $UserSID" -ForegroundColor "Green"
             Write-Host "DeliveryControllerAppName = $DeliveryControllerAppName" -ForegroundColor "Green"
             Write-Host "AppID = $AppID" -ForegroundColor "Green"
             Write-Host "Subscribed Status = $Status" -ForegroundColor "Green"
             Write-Host "SQL App Status = $SQLAppStatus" -ForegroundColor "Green"
-
-            # Process the key value pairs to convert into XML to be written to SQL
-            # key = even number
-            # value = odd number
-    
-            Write-Host "XML MetaData = $MetaData" -ForegroundColor "Green"
             Write-Host "`n"
     
-            Add-Content -Path ("$env:userprofile\desktop\$StoreName"+"SQL.txt") -Value ($UserSID+"`t"+$AppID+"`t"+$DeliveryControllerAppName+"`t"+$SQLAppStatus+"`t"+$MetaData) -Force
+            $Junk = $StringBuffer.Append($UserSID)
+            $Junk = $StringBuffer.Append("`t")
+            $Junk = $StringBuffer.Append($AppID)
+            $Junk = $StringBuffer.Append("`t")
+            $Junk = $StringBuffer.Append($DeliveryControllerAppName)
+            $Junk = $StringBuffer.Append("`t")
+            $Junk = $StringBuffer.Append($SQLAppStatus)
+            $Junk = $StringBuffer.Append("`t")
+            $Junk = $StringBuffer.Append($MetaData)
+            $Junk = $StringBuffer.AppendLine()
         }
+
+        [System.IO.File]::AppendAllText("$env:userprofile\desktop\$StoreName"+"SQL.txt",$StringBuffer.ToString())
+
+        $StopWatch.Stop()
+        write-host "Ended at $(Get-Date)"
+        write-host "Total Elapsed Time: $($StopWatch.Elapsed.ToString())" 
 
         $UniqueUserSIDS = $UserSIDs | Sort-Object | Select-Object -Unique
 
         Write-Host "$($UniqueUserSIDS.count) unique UserSIDs found" -ForegroundColor "Green"
-        Write-Host "$($TSVObject.count) subscriptions transformed" -ForegroundColor "Green"    
+        Write-Host "$($TSVObject.count) subscriptions transformed" -ForegroundColor "Green"   
     }
     else
     {
