@@ -1,0 +1,6 @@
+{
+  "GetTokenPath":  "root/tokens/clients",
+  "UrlTemplate":  "https://{0}.citrixworkspacesapi.jp/",
+  "FallbackConfigsPathTemplate":  "{0}/storeconfigs/{1}/fallbackconfigs",
+  "AccountsPath":  "Citrix/Roaming/Accounts"
+}
