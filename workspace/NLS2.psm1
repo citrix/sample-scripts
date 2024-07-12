@@ -265,7 +265,7 @@ function GetBearerToken
         "ClientSecret" = $clientSecret;
     }
 
-    $trustUrl = "${script:trustBaseUrl}/tokens/clients"
+    $trustUrl = "${script:trustBaseUrl}/$customer/tokens/clients"
     Write-Host $trustUrl $postHeaders $body
 
     try
