@@ -257,15 +257,15 @@ function GetBearerToken
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
     $postHeaders = @{
-        "Accept" = "Application/json";
-        "Content-Type" = "Application/json";
+        "Accept"       = "application/json";
+        "Content-Type" = "application/json";
     }
     $body = @{
         "ClientId"     = $clientId;
         "ClientSecret" = $clientSecret;
     }
 
-    $trustUrl = "${script:trustBaseUrl}/$customer/tokens/clients"
+    $trustUrl = "${script:trustBaseUrl}/tokens/clients"
     Write-Host $trustUrl $postHeaders $body
 
     try
